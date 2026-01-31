@@ -137,6 +137,8 @@ install(PROGRAMS
   fast_lio_localization/publish_initial_pose.py
   fast_lio_localization/transform_fusion.py
   fast_lio_localization/invert_livox_scan.py
+  fast_lio_localization/gps_path_node.py
+  fast_lio_localization/print_odom_quaternion.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

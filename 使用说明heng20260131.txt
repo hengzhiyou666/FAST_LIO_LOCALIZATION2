@@ -1,0 +1,34 @@
+/clock
+/events/read_split
+/events/write_split
+/gps_fix
+/gps_rtk_fix
+/imu_raw
+/parameter_events
+/points_raw
+/rosout
+
+
+ros2 launch fast_lio_localization localization.launch.py pcd_map_topic:=points_raw map:=/home/jie/heng_location_20260128_ws/laser_map_20260128_114602_180s.pcd
+
+ros2 launch fast_lio_localization localization.launch.py
+
+
+
+
+ros2 launch fast_lio_localization localization.launch.py config_file:=velodyne.yaml use_sim_time=true\
+  map:="/home/jie/heng_location_20260128_ws/laser_map_20260128_114602_180s.pcd" \ 
+  pcd_map_topic:=/map
+
+
+source install/setup.bash 
+ros2 launch fast_lio_localization localization.launch.py config_file:=velodyne.yaml\
+  map:="/home/jie/heng_location_20260128_ws/laser_map_20260128_114602_180s.pcd"\use_sim_time:=true 
+  
+  ros2 bag play rosbag2_2026_01_28-13_51_45_0.db3 --clock
+  
+  
+  ros2 run tf2_tools view_frames
+  
+  
+  

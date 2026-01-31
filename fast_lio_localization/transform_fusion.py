@@ -4,6 +4,12 @@ import copy
 import threading
 import time
 import numpy as np
+# Fix for numpy compatibility with transforms3d
+if not hasattr(np, 'float'):
+    np.float = np.float64
+    np.int = np.int_
+    np.complex = np.complex_
+    np.bool = np.bool_
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Pose, Point, Quaternion
@@ -27,6 +33,25 @@ class TransformFusion(Node):
 
         self.create_subscription(Odometry, "/Odometry", self.cb_save_cur_odom, 1)
         self.create_subscription(Odometry, "/map_to_odom", self.cb_save_map_to_odom, 1)
+
+        # 坐标系旋转补偿参数（单位：弧度）
+        # 顺时针旋转 90 度 = -π/2，用于对齐 body 坐标系的前进方向
+        self.declare_parameter("body_frame_yaw_offset", -1.5707963267948966)  # -90 度
+        self.body_frame_yaw_offset = (
+            self.get_parameter("body_frame_yaw_offset")
+            .get_parameter_value()
+            .double_value
+        )
+        
+        # 预计算旋转矩阵（绕 Z 轴旋转）
+        self.R_body_correction = np.eye(4)
+        cos_yaw = np.cos(self.body_frame_yaw_offset)
+        sin_yaw = np.sin(self.body_frame_yaw_offset)
+        self.R_body_correction[:3, :3] = np.array([
+            [cos_yaw, -sin_yaw, 0],
+            [sin_yaw,  cos_yaw, 0],
+            [0,        0,       1]
+        ])
 
         self.freq_pub_localization = 50
         self.timer = self.create_timer(1/self.freq_pub_localization, self.transform_fusion)
@@ -77,9 +102,13 @@ class TransformFusion(Node):
         if cur_odom is not None:
             T_odom_to_base_link = self.pose_to_mat(cur_odom.pose.pose)
             T_map_to_base_link = np.matmul(T_map_to_odom, T_odom_to_base_link)
+            
+            # 应用 body 坐标系旋转补偿，使前进方向对齐
+            # 旋转只影响姿态，不影响位置
+            T_map_to_base_link_corrected = np.matmul(T_map_to_base_link, self.R_body_correction)
 
-            xyz = tf_transformations.translation_from_matrix(T_map_to_base_link)
-            quat = tf_transformations.quaternion_from_matrix(T_map_to_base_link)
+            xyz = tf_transformations.translation_from_matrix(T_map_to_base_link_corrected)
+            quat = tf_transformations.quaternion_from_matrix(T_map_to_base_link_corrected)
 
             localization = Odometry()
             localization.pose.pose = Pose(

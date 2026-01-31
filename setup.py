@@ -13,14 +13,16 @@ setup(
     description="Fast LIO Localization ROS2 package",
     license="TODO",
     tests_require=["pytest"],
-    entry_points={
-        "console_scripts": [
-            "global_localization = fast_lio_localization.global_localization:main",
-            "publish_initial_pose = fast_lio_localization.publish_initial_pose:main",
-            "transform_fusion = fast_lio_localization.transform_fusion:main",
-            "invert_livox_scan = fast_lio_localization.invert_livox_scan:main",
-        ],
-    },
+        entry_points={
+            "console_scripts": [
+                "global_localization = fast_lio_localization.global_localization:main",
+                "publish_initial_pose = fast_lio_localization.publish_initial_pose:main",
+                "transform_fusion = fast_lio_localization.transform_fusion:main",
+                "invert_livox_scan = fast_lio_localization.invert_livox_scan:main",
+                "gps_path_node = fast_lio_localization.gps_path_node:main",
+                "print_odom_quaternion = fast_lio_localization.print_odom_quaternion:main",
+            ],
+        },
     data_files=[
         (os.path.join("share", package_name), ["package.xml"]),
         (os.path.join("share", package_name, "launch"), glob("launch/*.py")),

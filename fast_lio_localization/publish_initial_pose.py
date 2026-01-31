@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 
 import argparse
+import numpy as np
+# Fix for numpy compatibility with transforms3d
+if not hasattr(np, 'float'):
+    np.float = np.float64
+    np.int = np.int_
+    np.complex = np.complex_
+    np.bool = np.bool_
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Pose, Point, Quaternion, PoseWithCovarianceStamped

@@ -13,6 +13,12 @@ from nav_msgs.msg import Odometry
 from sensor_msgs.msg import PointCloud2
 from std_msgs.msg import Header
 import numpy as np
+# Fix for numpy compatibility with transforms3d
+if not hasattr(np, 'float'):
+    np.float = np.float64
+    np.int = np.int_
+    np.complex = np.complex_
+    np.bool = np.bool_
 import tf2_ros
 import tf_transformations
 import ros2_numpy
@@ -39,6 +45,8 @@ class FastLIOLocalization(Node):
                 ("fov_far", 300),
                 ("pcd_map_topic", "/map"),
                 ("pcd_map_path", ""),
+                ("icp_max_distance_multiplier", 2.0),  # 增大ICP最大距离倍数，提高初始偏差容忍度
+                ("icp_max_iteration", 30),  # 增加ICP迭代次数，提高收敛精度
             ],
         )
 
@@ -83,13 +91,16 @@ class FastLIOLocalization(Node):
         return pc_array["xyz"]
     
     def registration_at_scale(self, scan, map, initial, scale):
+        # 使用可配置的max_distance倍数，允许更大的初始偏差
+        max_distance = self.get_parameter("icp_max_distance_multiplier").value * scale
+        max_iteration = self.get_parameter("icp_max_iteration").value
         result_icp = o3d.pipelines.registration.registration_icp(
         self.voxel_down_sample(scan, self.get_parameter("scan_voxel_size").value * scale),
         self.voxel_down_sample(map, self.get_parameter("map_voxel_size").value * scale),
-        1.0 * scale,
+        max_distance,
         initial,
         o3d.pipelines.registration.TransformationEstimationPointToPoint(),
-        o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=20),
+        o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=max_iteration),
         )
         return result_icp.transformation, result_icp.fitness
             
@@ -151,15 +162,25 @@ class FastLIOLocalization(Node):
         scan_tobe_mapped = copy.copy(self.cur_scan)
         global_map_in_FOV = self.crop_global_map_in_FOV(pose_estimation)
         
-        transformation, _ = self.registration_at_scale(scan_tobe_mapped, global_map_in_FOV, initial=pose_estimation, scale=5)
+        # 多尺度ICP配准：从粗到细，逐步收敛
+        # scale=10: 粗配准，处理大偏差（max_distance = 2.0 * 10 = 20米）
+        transformation, _ = self.registration_at_scale(scan_tobe_mapped, global_map_in_FOV, initial=pose_estimation, scale=10)
         
-        transformation, fitness = self.registration_at_scale(scan_tobe_mapped, global_map_in_FOV, initial=pose_estimation, scale=1)
+        # scale=5: 中等配准，进一步细化（max_distance = 2.0 * 5 = 10米）
+        transformation, _ = self.registration_at_scale(scan_tobe_mapped, global_map_in_FOV, initial=transformation, scale=5)
+        
+        # scale=2: 精细配准（max_distance = 2.0 * 2 = 4米）
+        transformation, _ = self.registration_at_scale(scan_tobe_mapped, global_map_in_FOV, initial=transformation, scale=2)
+        
+        # scale=1: 最精细配准（max_distance = 2.0 * 1 = 2米）
+        transformation, fitness = self.registration_at_scale(scan_tobe_mapped, global_map_in_FOV, initial=transformation, scale=1)
         
         if fitness > self.get_parameter("localization_threshold").value:
             self.T_map_to_odom = transformation
             self.publish_odom(transformation)
+            self.get_logger().info(f"Localization updated with fitness: {fitness:.4f}")
         else:
-            self.get_logger().warn(f"Fitness score {fitness} less than localization threshold {self.get_parameter('localization_threshold').value}")
+            self.get_logger().warn(f"Fitness score {fitness:.4f} less than localization threshold {self.get_parameter('localization_threshold').value}")
 
     def voxel_down_sample(self, pcd, voxel_size):
         # print(pcd)
